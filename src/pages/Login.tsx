@@ -1,11 +1,33 @@
 import { GoogleLogin, CredentialResponse } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
+import Cookies from "js-cookie";
+import { DecodedToken } from "../interfaces/DecodeTokenLoginInterface";
 
 export function Login() {
-  const responseMessage = (response: CredentialResponse) => {
+  const responseMessage = async (response: CredentialResponse) => {
     if (response.credential) {
-      const credentialsDecoded = jwtDecode(response.credential);
-      console.log("Credentials Decoded:", credentialsDecoded);
+      const decoded: DecodedToken = jwtDecode<DecodedToken>(
+        response.credential
+      );
+
+      const responseLogin = await fetch(
+        "http://localhost:8080/api/v1/auth/login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: decoded?.name,
+            email: decoded?.email,
+            picture: decoded?.picture,
+          }),
+        }
+      );
+      const dataLogin = await responseLogin.json();
+      const token = dataLogin.token;
+      Cookies.set("token", token, { expires: 7 });
+      window.location.reload();
     } else {
       console.error("Credential is undefined");
     }
