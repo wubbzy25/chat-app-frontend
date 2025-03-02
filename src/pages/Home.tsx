@@ -31,7 +31,9 @@ export function Home() {
   // Connect to main WebSocket once on component mount
   useEffect(() => {
     // Create a single WebSocket connection for all chats
-    const socket = new WebSocket("ws://localhost:8080/chat");
+    const socket = new WebSocket(
+      "wss://chat-app-backend-9q4s.onrender.com/chat"
+    );
 
     const client = new Client({
       webSocketFactory: () => socket,

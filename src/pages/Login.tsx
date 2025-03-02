@@ -11,7 +11,7 @@ export function Login() {
       );
 
       const responseLogin = await fetch(
-        "http://localhost:8080/api/v1/auth/login",
+        "https://chat-app-backend-9q4s.onrender.com/api/v1/auth/login",
         {
           method: "POST",
           headers: {
