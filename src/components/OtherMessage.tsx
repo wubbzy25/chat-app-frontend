@@ -12,7 +12,7 @@ export function OtherMessage({ msg }: { msg: CardChatInterface }) {
       </figure>
       <div>
         <div className="border-2 border-purple-200 rounded-xl p-3 ">
-          <p className="text-wrap w-80 text-md text-purple-600">
+          <p className="text-wrap w-auto text-md text-purple-600  max-w-[70vw] overflow-x-hidden break-words lg:max-w-[30vw] ">
             {msg.message}
           </p>
         </div>

@@ -1,14 +1,14 @@
 import { OtherMessage } from "../components/OtherMessage";
 import { OwnMessage } from "../components/OwnMessage";
 import { CiPaperplane } from "react-icons/ci";
-import { useEffect, useState } from "react";
+import { FaArrowLeft } from "react-icons/fa6";
+import { useEffect, useState, useRef, useCallback, memo } from "react";
 import { ChatPageInterface } from "../interfaces/ChatPageInterface";
 import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
 import { DecodedToken } from "../interfaces/DecodeTokenHomeInterface";
 import { SocketMessage } from "../interfaces/SocketMessageInterface";
 import api from "../Utils/Api";
-// import { ChatPageInterface } from "../interfaces/ChatPageInterface";
 
 interface userInfo {
   idUser: string;
@@ -16,113 +16,159 @@ interface userInfo {
   email: string;
   picture: string;
 }
+
+// Memoized message components to prevent re-rendering when parent re-renders
+const MemoizedOwnMessage = memo(OwnMessage);
+const MemoizedOtherMessage = memo(OtherMessage);
+
 export function ChatPage({
+  setChat,
+  isChatOpen,
   name,
   picture,
   chatId,
   sendMessage,
   messages,
-  setMessages,
 }: ChatPageInterface) {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const timeOptions: Intl.DateTimeFormatOptions = {
     hour: "2-digit",
     minute: "2-digit",
   };
   const [message, setMessage] = useState("");
-  const [SenderId, setSenderId] = useState("");
+  const [senderId, setSenderId] = useState("");
   const [userInfos, setUserInfos] = useState<userInfo>({} as userInfo);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const userInfoFetched = useRef(false);
 
-  const fetchDataUserInformation = async (userId: string) => {
+  // Cache-busting key for the image
+  const imageKey = useRef(`${picture}?t=${new Date().getTime()}`);
+
+  // Update image key when picture prop changes
+  useEffect(() => {
+    imageKey.current = `${picture}?t=${new Date().getTime()}`;
+  }, [picture]);
+
+  const fetchDataUserInformation = useCallback(async (userId: string) => {
     try {
       const response = await api.get(
         `/chats/GetUserInformation?idUser=${userId}`
       );
-      const user = response.data;
-      console.log(response.data);
-      setUserInfos(user);
+      setUserInfos(response.data);
     } catch (error) {
       console.error("Error fetching user information:", error);
     }
-  };
+  }, []);
 
-  const handleSendMessage = () => {
-    const token = Cookies.get("token");
-    if (token) {
-      const idUser = jwtDecode<DecodedToken>(token)?.id_user;
-      setSenderId(idUser);
-
-      if (message.trim() === "" || !userInfos.picture) return;
-
-      const newSocketMessage: SocketMessage = {
-        chatId: chatId,
-        message: message,
-        senderId: idUser,
-        picture: userInfos.picture,
-        time: new Date().toLocaleTimeString([], timeOptions),
-      };
-      sendMessage(newSocketMessage);
-      setMessage("");
-    }
-  };
+  // Fetch user information only once when component mounts
   useEffect(() => {
     const token = Cookies.get("token");
     if (token) {
       const decoded = jwtDecode<DecodedToken>(token);
       const idUser = decoded?.id_user;
-      console.log(idUser);
-      if (idUser === SenderId) {
+      setSenderId(idUser);
+
+      if (!userInfoFetched.current) {
+        userInfoFetched.current = true;
         fetchDataUserInformation(idUser);
       }
     }
-  }, [SenderId, messages]);
+  }, [fetchDataUserInformation]);
 
+  const handleSendMessage = useCallback(() => {
+    if (message.trim() === "" || !userInfos.picture || !senderId) return;
+
+    const newSocketMessage: SocketMessage = {
+      chatId: chatId,
+      message: message,
+      senderId: senderId,
+      picture: userInfos.picture,
+      time: new Date().toLocaleTimeString([], timeOptions),
+    };
+
+    sendMessage(newSocketMessage);
+    setMessage("");
+  }, [message, userInfos.picture, senderId, chatId, sendMessage, timeOptions]);
+
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView();
+    }
+  }, []);
+
+  // Scroll to bottom when messages change
   useEffect(() => {
-    if (userInfos.picture) {
-      handleSendMessage();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userInfos.picture]);
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setMessage(e.target.value);
-  };
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setMessage(e.target.value);
+    },
+    []
+  );
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleSendMessage();
-    }
-  };
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        handleSendMessage();
+      }
+    },
+    [handleSendMessage]
+  );
+
+  const handleBackListChat = useCallback(() => {
+    setChat(false);
+  }, [setChat]);
 
   return (
     <>
       {/* Chat  */}
-      <div className="w-full flex flex-col justify-between bg-white p-5 border-2 border-gray-400 rounded-2xl">
-        <div>
-          {/* Header chat */}
-          <div className="flex gap-3 items-center h-20 border-b-1 border-gray-400 p-2 ">
-            <figure className="w-17 h-17">
-              <img
-                src={`${picture}?t=${new Date().getTime()}`}
-                className="w-full h-full rounded-full"
-                alt={`${name} avatar`}
-              />
-            </figure>
-            <h2>{name}</h2>
-          </div>
-          {/* Content Chat */}
-          <div className="bg-white h-110 overflow-auto ">
-            {messages.map((msg, index) =>
-              msg.senderId === SenderId ? (
-                <OwnMessage key={index} msg={msg} />
+      <div
+        className={`flex flex-col h-dvh px-2  w-full ${isChatOpen} ? "hidden": "" lg:grow lg:w-0 lg:px-5`}
+      >
+        {/* Header chat */}
+        <header className="flex gap-3 items-center h-20 border-b-1 border-gray-400 p-2">
+          <FaArrowLeft
+            className="text-3xl lg:hidden"
+            onClick={handleBackListChat}
+          />
+          <figure className="w-15 h-15">
+            <img
+              src={imageKey.current}
+              className="w-full h-full rounded-full"
+              alt={`${name} avatar`}
+            />
+          </figure>
+          <h2 className="text-3xl">{name}</h2>
+        </header>
+
+        {/* Content Chat */}
+        <div className="grow bg-white overflow-y-auto lg:px-3 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:rounded-full">
+          {Array.isArray(messages) && messages.length > 0 ? (
+            messages.map((msg, index) =>
+              msg.senderId === senderId ? (
+                <MemoizedOwnMessage
+                  key={`${msg.senderId}-${index}-${msg.time}`}
+                  msg={msg}
+                />
               ) : (
-                <OtherMessage key={index} msg={msg} />
+                <MemoizedOtherMessage
+                  key={`${msg.senderId}-${index}-${msg.time}`}
+                  msg={msg}
+                />
               )
-            )}
-          </div>
+            )
+          ) : (
+            <div className="text-center text-gray-500 mt-10">
+              No messages yet. Start a conversation!
+            </div>
+          )}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input message */}
-        <div className="bg-white w-full border-2  flex rounded-xl border-purple-300 p-1">
+        <div className="bg-white w-full border-2 flex rounded-xl mb-3 border-purple-300 lg:mb-1">
           <input
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
